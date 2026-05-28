@@ -355,7 +355,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
                         {vehicle ? `Móvil ${vehicle.number}` : '—'}
                       </td>
                       <td className="px-4 py-2 text-right font-semibold">
-                        ${entry.amount.toLocaleString()}
+                        ${entry.amount}
                       </td>
                       <td className="px-4 py-2">
                         {entry.recognized ? (
@@ -378,7 +378,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
                     Total seleccionado ({selectedEntries.length} patentes)
                   </td>
                   <td className="px-4 py-2 text-right font-bold text-gray-900">
-                    ${selectedTotal.toLocaleString()}
+                    ${selectedTotal}
                   </td>
                   <td />
                 </tr>
