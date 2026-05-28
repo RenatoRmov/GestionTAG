@@ -16,13 +16,37 @@ interface BulkUploadProps {
   onSave: (tolls: Omit<Toll, 'id'>[]) => void;
 }
 
-// Handles both standard (1055.13) and Chilean format (1.055,13)
+// Detects and handles both Chilean (1.055,13) and US (1,055.13) number formats
 const parseNumber = (value: unknown): number => {
   if (typeof value === 'number') return value;
   if (!value && value !== 0) return 0;
-  const str = String(value).trim();
-  // Remove thousands separator (.) then replace decimal comma with dot
-  const normalized = str.replace(/\./g, '').replace(',', '.');
+  const str = String(value).trim().replace(/\s/g, '');
+  if (!str) return 0;
+
+  const hasDot = str.includes('.');
+  const hasComma = str.includes(',');
+
+  let normalized: string;
+  if (hasComma && hasDot) {
+    // Ambiguous: determine which is decimal by position of last separator
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      // Chilean: 1.055,13 → dot=thousands, comma=decimal
+      normalized = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      // US: 1,055.13 → comma=thousands, dot=decimal
+      normalized = str.replace(/,/g, '');
+    }
+  } else if (hasComma && !hasDot) {
+    // Could be Chilean decimal "351,71" or thousands "1,055"
+    // If exactly one comma and digits after look like decimals → decimal
+    normalized = str.replace(',', '.');
+  } else {
+    // US decimal or plain integer: "351.71", "1055"
+    normalized = str;
+  }
+
   const result = parseFloat(normalized);
   return isNaN(result) ? 0 : result;
 };
@@ -80,11 +104,16 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
         }
 
         // Group by patente and sum amounts
+        // Skip summary/total rows that appear in grouped Excel reports
+        const SKIP_KEYWORDS = ['total', 'subtotal', 'grand', 'suma', 'etiqueta', 'resumen'];
+        const isTotalRow = (plate: string) =>
+          SKIP_KEYWORDS.some(kw => plate.toLowerCase().includes(kw));
+
         const totals = new Map<string, number>();
         for (let i = headerRowIdx + 1; i < rows.length; i++) {
           const row = rows[i] as unknown[];
           const plate = String(row[plateIdx] ?? '').trim().toUpperCase();
-          if (!plate) continue;
+          if (!plate || isTotalRow(plate)) continue;
           const amount = parseNumber(row[amountIdx]);
           if (amount === 0) continue;
           totals.set(plate, (totals.get(plate) ?? 0) + amount);
@@ -98,7 +127,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
         const knownPlates = new Set(vehicles.map(v => v.licenseplate.toUpperCase()));
         const parsed: ParsedEntry[] = Array.from(totals.entries()).map(([plate, amount]) => ({
           licenseplate: plate,
-          amount: Math.round(amount),
+          amount: Math.round(amount * 100) / 100,
           recognized: knownPlates.has(plate),
           selected: knownPlates.has(plate), // auto-deselect unknown plates
         }));
