@@ -2,6 +2,7 @@ import React from 'react';
 import { Car, FileSpreadsheet, PencilLine, Plus, X } from 'lucide-react';
 import { Vehicle, Toll, HIGHWAYS, MONTHS } from '../types';
 import { sortVehicles } from '../lib/utils';
+import BulkUpload from './BulkUpload';
 
 interface RegisterTabProps {
   vehicles: Vehicle[];
@@ -22,14 +23,19 @@ interface RegisterTabProps {
   onAddToll: (e: React.FormEvent) => void;
   onEditToll: (toll: Toll) => void;
   onCancelEditToll: () => void;
+
+  // Bulk upload
+  onBulkSave: (tolls: Omit<Toll, 'id'>[]) => void;
 }
 
 const RegisterTab: React.FC<RegisterTabProps> = ({
   vehicles, tolls, selectedMonth,
   editingVehicle, newVehicle, setNewVehicle, onAddVehicle, onCancelEditVehicle,
   editingToll, newToll, setNewToll, onAddToll, onEditToll, onCancelEditToll,
+  onBulkSave,
 }) => {
   return (
+    <div className="space-y-6">
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Formulario de Vehículos */}
       <div className="bg-white rounded-lg shadow p-6">
@@ -216,6 +222,8 @@ const RegisterTab: React.FC<RegisterTabProps> = ({
           )}
         </div>
       </div>
+    </div>
+    <BulkUpload vehicles={vehicles} existingTolls={tolls} onSave={onBulkSave} />
     </div>
   );
 };

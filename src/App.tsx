@@ -194,6 +194,22 @@ function App() {
     setNewToll({ highway: HIGHWAYS[0], licenseplate: '', amount: '', month: selectedMonth });
   };
 
+  const handleBulkSave = async (newTolls: Omit<Toll, 'id'>[]) => {
+    const baseTime = Date.now();
+    const tollsToSave: Toll[] = newTolls.map((t, i) => ({
+      ...t,
+      id: `${baseTime}-${i}`,
+    }));
+    if (supabase) {
+      const { error } = await supabase.from('tolls').upsert(tollsToSave);
+      if (error) console.warn('Supabase error on bulk save:', error);
+    }
+    const updatedTolls = [...tolls, ...tollsToSave];
+    setTolls(updatedTolls);
+    localStorage.setItem('tolls_data', JSON.stringify(updatedTolls));
+    alert(`${tollsToSave.length} registro${tollsToSave.length !== 1 ? 's' : ''} importados exitosamente`);
+  };
+
   const handleAddInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     const newInvoiceData: Invoice = {
@@ -369,6 +385,7 @@ function App() {
             onAddToll={handleAddToll}
             onEditToll={handleEditToll}
             onCancelEditToll={handleCancelEditToll}
+            onBulkSave={handleBulkSave}
           />
         )}
         {activeTab === 'billing' && (
