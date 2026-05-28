@@ -61,7 +61,7 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
   { id: '3',  number: '07',  drivername: 'Driver',   licenseplate: 'JWDL16'  },
   { id: '4',  number: '15',  drivername: 'Driver',   licenseplate: 'KFHX32'  },
   { id: '5',  number: '19',  drivername: 'Driver',   licenseplate: 'KDDV91'  },
-  { id: '6',  number: '20',  drivername: 'Driver',   licenseplate: 'KYFBB66' },
+  { id: '6',  number: '20',  drivername: 'Driver',   licenseplate: 'KYFB66'  },
   { id: '7',  number: '27',  drivername: 'Driver',   licenseplate: 'TBZB28'  },
   { id: '8',  number: '32',  drivername: 'Driver',   licenseplate: 'SSGW45'  },
   { id: '9',  number: '34',  drivername: 'Driver',   licenseplate: 'LZRV27'  },
@@ -83,6 +83,6 @@ export const DEFAULT_VEHICLES: Vehicle[] = [
   { id: '25', number: '152', drivername: 'Driver',   licenseplate: 'SRHZ15'  },
   { id: '26', number: '18',  drivername: 'Driver',   licenseplate: 'KYFB78'  },
   { id: '27', number: '',    drivername: 'Driver',   licenseplate: 'JC0708'  },
-  { id: '28', number: '',    drivername: 'Driver',   licenseplate: 'KYFB82'  },
+  { id: '28', number: '',    drivername: 'Driver',   licenseplate: 'KYFB83'  },
   { id: '29', number: '',    drivername: 'Driver',   licenseplate: 'VTTJ27'  },
 ];

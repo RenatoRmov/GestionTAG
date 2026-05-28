@@ -90,7 +90,60 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
-        // Search header row in first 10 rows
+        const SKIP_KEYWORDS = ['total', 'subtotal', 'grand', 'suma', 'etiqueta', 'resumen', '(en blanco)'];
+        const isTotalRow = (plate: string) =>
+          SKIP_KEYWORDS.some(kw => plate.toLowerCase().includes(kw));
+
+        // --- Priority: detect pivot table ("Etiquetas de" + "Suma de") ---
+        // Pivot totals are pre-calculated by Excel with correct scale; raw transactions
+        // may store integers with custom display format (e.g. 35171 displayed as "351,71").
+        let pivotHeaderRow = -1;
+        let pivotPlateCol = -1;
+        let pivotSumCol = -1;
+
+        for (let i = 0; i < rows.length; i++) {
+          const cells = (rows[i] as unknown[]).map(c => String(c ?? '').toLowerCase().trim());
+          const etiqIdx = cells.findIndex(c => c.includes('etiqueta'));
+          if (etiqIdx === -1) continue;
+          // Look for sum column to the right in the same row
+          const sumaIdx = cells.findIndex(
+            (c, idx) => idx > etiqIdx && (c.includes('suma') || c.includes('monto') || c.includes('total'))
+          );
+          pivotHeaderRow = i;
+          pivotPlateCol = etiqIdx;
+          pivotSumCol = sumaIdx !== -1 ? sumaIdx : etiqIdx + 1;
+          break;
+        }
+
+        if (pivotHeaderRow !== -1) {
+          const totals = new Map<string, number>();
+          for (let i = pivotHeaderRow + 1; i < rows.length; i++) {
+            const row = rows[i] as unknown[];
+            const plate = String(row[pivotPlateCol] ?? '').trim().toUpperCase();
+            if (!plate || isTotalRow(plate)) continue;
+            const amount = parseNumber(row[pivotSumCol]);
+            if (amount === 0) continue;
+            totals.set(plate, (totals.get(plate) ?? 0) + amount);
+          }
+
+          if (totals.size === 0) {
+            setParseError('No se encontraron datos válidos en el archivo.');
+            return;
+          }
+
+          const knownPlates = new Set(vehicles.map(v => v.licenseplate.toUpperCase()));
+          const parsed: ParsedEntry[] = Array.from(totals.entries()).map(([plate, amount]) => ({
+            licenseplate: plate,
+            amount: Math.round(amount * 100) / 100,
+            recognized: knownPlates.has(plate),
+            selected: knownPlates.has(plate),
+          }));
+          parsed.sort((a, b) => Number(b.recognized) - Number(a.recognized));
+          setEntries(parsed);
+          return;
+        }
+
+        // --- Fallback: find transaction columns (Patente + Tarifa/Monto) ---
         let headerRowIdx = -1;
         let plateIdx = -1;
         let amountIdx = -1;
@@ -112,12 +165,6 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
           return;
         }
 
-        // Group by patente and sum amounts
-        // Skip summary/total rows that appear in grouped Excel reports
-        const SKIP_KEYWORDS = ['total', 'subtotal', 'grand', 'suma', 'etiqueta', 'resumen'];
-        const isTotalRow = (plate: string) =>
-          SKIP_KEYWORDS.some(kw => plate.toLowerCase().includes(kw));
-
         const totals = new Map<string, number>();
         for (let i = headerRowIdx + 1; i < rows.length; i++) {
           const row = rows[i] as unknown[];
@@ -138,7 +185,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
           licenseplate: plate,
           amount: Math.round(amount * 100) / 100,
           recognized: knownPlates.has(plate),
-          selected: knownPlates.has(plate), // auto-deselect unknown plates
+          selected: knownPlates.has(plate),
         }));
 
         // Sort: recognized first, then unknown
