@@ -134,7 +134,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
           const knownPlates = new Set(vehicles.map(v => v.licenseplate.toUpperCase()));
           const parsed: ParsedEntry[] = Array.from(totals.entries()).map(([plate, amount]) => ({
             licenseplate: plate,
-            amount: Math.round(amount * 100) / 100,
+            amount: Math.round(amount),
             recognized: knownPlates.has(plate),
             selected: knownPlates.has(plate),
           }));
@@ -183,7 +183,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
         const knownPlates = new Set(vehicles.map(v => v.licenseplate.toUpperCase()));
         const parsed: ParsedEntry[] = Array.from(totals.entries()).map(([plate, amount]) => ({
           licenseplate: plate,
-          amount: Math.round(amount * 100) / 100,
+          amount: Math.round(amount),
           recognized: knownPlates.has(plate),
           selected: knownPlates.has(plate),
         }));
