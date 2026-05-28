@@ -16,19 +16,20 @@ interface BulkUploadProps {
   onSave: (tolls: Omit<Toll, 'id'>[]) => void;
 }
 
-// Detects and handles both Chilean (1.055,13) and US (1,055.13) number formats
+// Handles: Chilean (1.055,13), US (1,055.13), thousands-only (3.800 = 3800), $-prefixed ($ 621)
 const parseNumber = (value: unknown): number => {
   if (typeof value === 'number') return value;
   if (!value && value !== 0) return 0;
-  const str = String(value).trim().replace(/\s/g, '');
+  // Strip currency symbols and whitespace
+  const str = String(value).trim().replace(/[$€\s]/g, '');
   if (!str) return 0;
 
   const hasDot = str.includes('.');
   const hasComma = str.includes(',');
 
   let normalized: string;
+
   if (hasComma && hasDot) {
-    // Ambiguous: determine which is decimal by position of last separator
     const lastDot = str.lastIndexOf('.');
     const lastComma = str.lastIndexOf(',');
     if (lastComma > lastDot) {
@@ -39,12 +40,20 @@ const parseNumber = (value: unknown): number => {
       normalized = str.replace(/,/g, '');
     }
   } else if (hasComma && !hasDot) {
-    // Could be Chilean decimal "351,71" or thousands "1,055"
-    // If exactly one comma and digits after look like decimals → decimal
-    normalized = str.replace(',', '.');
+    // Comma only: decimal if ≠3 digits after comma, thousands if exactly 3
+    const afterComma = str.split(',').slice(-1)[0];
+    normalized = afterComma.length === 3
+      ? str.replace(/,/g, '')          // thousands: 1,800 → 1800
+      : str.replace(',', '.');          // decimal:   351,71 → 351.71
+  } else if (hasDot && !hasComma) {
+    // Dot only: thousands if ALL groups after dot have exactly 3 digits (3.800, 1.000.000)
+    const parts = str.split('.');
+    const allThousandGroups = parts.length > 1 && parts.slice(1).every(p => p.length === 3);
+    normalized = allThousandGroups
+      ? str.replace(/\./g, '')          // thousands: 3.800 → 3800
+      : str;                            // decimal:   351.71 stays
   } else {
-    // US decimal or plain integer: "351.71", "1055"
-    normalized = str;
+    normalized = str;                   // plain integer
   }
 
   const result = parseFloat(normalized);
@@ -86,7 +95,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
         let plateIdx = -1;
         let amountIdx = -1;
 
-        for (let i = 0; i < Math.min(10, rows.length); i++) {
+        for (let i = 0; i < Math.min(50, rows.length); i++) {
           const cells = (rows[i] as unknown[]).map(String);
           const p = findColumnIndex(cells, ['patente', 'patent']);
           const a = findColumnIndex(cells, ['tarifa', 'monto', 'importe', 'valor', 'mto', 'cobro']);
