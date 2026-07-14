@@ -15,6 +15,7 @@ interface RegisterTabProps {
   setNewVehicle: (v: { number: string; drivername: string; licenseplate: string }) => void;
   onAddVehicle: (e: React.FormEvent) => void;
   onCancelEditVehicle: () => void;
+  onQuickAddVehicle: (vehicle: { number: string; drivername: string; licenseplate: string }) => Promise<void>;
 
   // Toll form
   editingToll: Toll | null;
@@ -30,7 +31,7 @@ interface RegisterTabProps {
 
 const RegisterTab: React.FC<RegisterTabProps> = ({
   vehicles, tolls, selectedMonth,
-  editingVehicle, newVehicle, setNewVehicle, onAddVehicle, onCancelEditVehicle,
+  editingVehicle, newVehicle, setNewVehicle, onAddVehicle, onCancelEditVehicle, onQuickAddVehicle,
   editingToll, newToll, setNewToll, onAddToll, onEditToll, onCancelEditToll,
   onBulkSave,
 }) => {
@@ -223,7 +224,7 @@ const RegisterTab: React.FC<RegisterTabProps> = ({
         </div>
       </div>
     </div>
-    <BulkUpload vehicles={vehicles} existingTolls={tolls} onSave={onBulkSave} />
+    <BulkUpload vehicles={vehicles} existingTolls={tolls} onSave={onBulkSave} onAddVehicle={onQuickAddVehicle} />
     </div>
   );
 };

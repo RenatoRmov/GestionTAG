@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Upload, Check, AlertTriangle, X, FileWarning } from 'lucide-react';
+import { Upload, Check, AlertTriangle, X, FileWarning, UserPlus } from 'lucide-react';
 import { Vehicle, Toll, HIGHWAYS, MONTHS } from '../types';
 
 interface ParsedEntry {
@@ -20,6 +20,7 @@ interface BulkUploadProps {
   vehicles: Vehicle[];
   existingTolls: Toll[];
   onSave: (tolls: Omit<Toll, 'id'>[]) => void;
+  onAddVehicle: (vehicle: { number: string; drivername: string; licenseplate: string }) => Promise<void>;
 }
 
 const SKIP_KEYWORDS = ['total', 'subtotal', 'grand', 'suma', 'etiqueta', 'resumen', '(en blanco)'];
@@ -211,13 +212,28 @@ const buildEntries = (files: LoadedFile[], vehicles: Vehicle[]): ParsedEntry[] =
   return parsed;
 };
 
-const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave }) => {
+const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave, onAddVehicle }) => {
   const [highway, setHighway] = useState(HIGHWAYS[0]);
   const [month, setMonth] = useState(MONTHS[new Date().getMonth()]);
   const [files, setFiles] = useState<LoadedFile[]>([]);
   const [entries, setEntries] = useState<ParsedEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [addingPlate, setAddingPlate] = useState<string | null>(null);
+  const [quickAddNumber, setQuickAddNumber] = useState('');
+  const [quickAddDriver, setQuickAddDriver] = useState('');
+  const [quickAddSaving, setQuickAddSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // If a plate gets registered elsewhere (or via the quick-add form below), reflect
+  // it as recognized/selected without requiring the user to re-upload the file.
+  useEffect(() => {
+    const knownPlates = new Set(vehicles.map(v => v.licenseplate.toUpperCase()));
+    setEntries(prev => prev.map(e => {
+      const nowRecognized = knownPlates.has(e.licenseplate);
+      if (nowRecognized && !e.recognized) return { ...e, recognized: true, selected: true };
+      return { ...e, recognized: nowRecognized };
+    }));
+  }, [vehicles]);
 
   const alreadyHasData = entries.length > 0 &&
     existingTolls.some(t => t.highway === highway && t.month === month);
@@ -256,6 +272,32 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
   const toggleAll = () => {
     const allSelected = entries.every(e => e.selected);
     setEntries(prev => prev.map(e => ({ ...e, selected: !allSelected })));
+  };
+
+  const startQuickAdd = (plate: string) => {
+    setAddingPlate(plate);
+    setQuickAddNumber('');
+    setQuickAddDriver('');
+  };
+
+  const cancelQuickAdd = () => setAddingPlate(null);
+
+  const submitQuickAdd = async () => {
+    if (!addingPlate || !quickAddNumber.trim()) return;
+    setQuickAddSaving(true);
+    try {
+      await onAddVehicle({
+        number: quickAddNumber.trim(),
+        drivername: quickAddDriver.trim() || 'Driver',
+        licenseplate: addingPlate,
+      });
+      setAddingPlate(null);
+    } catch (err) {
+      console.error('Error adding vehicle:', err);
+      alert('Error al agregar el vehículo. Intenta nuevamente.');
+    } finally {
+      setQuickAddSaving(false);
+    }
   };
 
   const handleConfirm = () => {
@@ -372,7 +414,7 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
                 <strong>{unknownCount} patente{unknownCount > 1 ? 's' : ''}</strong> no están registradas en el sistema.
-                Fueron deseleccionadas automáticamente — puedes incluirlas si corresponde.
+                Fueron deseleccionadas automáticamente — usa "Agregar móvil" en la tabla para registrarlas antes de importar, o inclúyelas igual si corresponde.
               </span>
             </div>
           )}
@@ -407,37 +449,96 @@ const BulkUpload: React.FC<BulkUploadProps> = ({ vehicles, existingTolls, onSave
                     v => v.licenseplate.toUpperCase() === entry.licenseplate
                   );
                   return (
-                    <tr
-                      key={i}
-                      className={`transition-opacity ${!entry.selected ? 'opacity-40' : ''}`}
-                    >
-                      <td className="px-4 py-2">
-                        <input
-                          type="checkbox"
-                          checked={entry.selected}
-                          onChange={() => toggleEntry(i)}
-                          className="rounded"
-                        />
-                      </td>
-                      <td className="px-4 py-2 font-mono font-medium">{entry.licenseplate}</td>
-                      <td className="px-4 py-2 text-gray-500">
-                        {vehicle ? `Móvil ${vehicle.number}` : '—'}
-                      </td>
-                      <td className="px-4 py-2 text-right font-semibold">
-                        ${entry.amount}
-                      </td>
-                      <td className="px-4 py-2">
-                        {entry.recognized ? (
-                          <span className="inline-flex items-center gap-1 text-green-700 text-xs bg-green-50 px-2 py-0.5 rounded-full">
-                            <Check className="w-3 h-3" /> Reconocida
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-700 text-xs bg-amber-50 px-2 py-0.5 rounded-full">
-                            <AlertTriangle className="w-3 h-3" /> No registrada
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+                    <React.Fragment key={entry.licenseplate}>
+                      <tr className={`transition-opacity ${!entry.selected ? 'opacity-40' : ''}`}>
+                        <td className="px-4 py-2">
+                          <input
+                            type="checkbox"
+                            checked={entry.selected}
+                            onChange={() => toggleEntry(i)}
+                            className="rounded"
+                          />
+                        </td>
+                        <td className="px-4 py-2 font-mono font-medium">{entry.licenseplate}</td>
+                        <td className="px-4 py-2 text-gray-500">
+                          {vehicle ? `Móvil ${vehicle.number}` : '—'}
+                        </td>
+                        <td className="px-4 py-2 text-right font-semibold">
+                          ${entry.amount}
+                        </td>
+                        <td className="px-4 py-2">
+                          {entry.recognized ? (
+                            <span className="inline-flex items-center gap-1 text-green-700 text-xs bg-green-50 px-2 py-0.5 rounded-full">
+                              <Check className="w-3 h-3" /> Reconocida
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1 text-amber-700 text-xs bg-amber-50 px-2 py-0.5 rounded-full">
+                                <AlertTriangle className="w-3 h-3" /> No registrada
+                              </span>
+                              {addingPlate !== entry.licenseplate && (
+                                <button
+                                  onClick={() => startQuickAdd(entry.licenseplate)}
+                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                                >
+                                  <UserPlus className="w-3 h-3" /> Agregar móvil
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                      {addingPlate === entry.licenseplate && (
+                        <tr className="bg-blue-50">
+                          <td />
+                          <td colSpan={4} className="px-4 py-3">
+                            <div className="flex flex-wrap items-end gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600">Patente</label>
+                                <input
+                                  type="text"
+                                  value={entry.licenseplate}
+                                  disabled
+                                  className="mt-1 block w-28 rounded-md border-gray-300 bg-gray-100 text-sm shadow-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600">Número de Móvil</label>
+                                <input
+                                  type="text"
+                                  value={quickAddNumber}
+                                  onChange={e => setQuickAddNumber(e.target.value)}
+                                  autoFocus
+                                  className="mt-1 block w-28 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-600">Conductor (opcional)</label>
+                                <input
+                                  type="text"
+                                  value={quickAddDriver}
+                                  onChange={e => setQuickAddDriver(e.target.value)}
+                                  className="mt-1 block w-40 rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                />
+                              </div>
+                              <button
+                                onClick={submitQuickAdd}
+                                disabled={!quickAddNumber.trim() || quickAddSaving}
+                                className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                              >
+                                <Check className="w-3.5 h-3.5" /> {quickAddSaving ? 'Guardando...' : 'Guardar'}
+                              </button>
+                              <button
+                                onClick={cancelQuickAdd}
+                                className="flex items-center gap-1 text-gray-500 hover:text-gray-700 px-2 py-1.5 text-sm"
+                              >
+                                <X className="w-3.5 h-3.5" /> Cancelar
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

@@ -49,9 +49,8 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      setVehicles(DEFAULT_VEHICLES);
-
       if (!supabase) {
+        setVehicles(DEFAULT_VEHICLES);
         const savedTolls = localStorage.getItem('tolls_data');
         const savedInvoices = localStorage.getItem('invoices_data');
         if (savedTolls) setTolls(JSON.parse(savedTolls));
@@ -59,8 +58,21 @@ function App() {
         return;
       }
 
+      const { data: vehiclesData, error: vehiclesError } = await supabase.from('vehicles').select('*');
       const { data: tollsData, error: tollsError } = await supabase.from('tolls').select('*');
       const { data: invoicesData, error: invoicesError } = await supabase.from('invoices').select('*');
+
+      if (vehiclesError) {
+        console.warn('Supabase error loading vehicles, using defaults:', vehiclesError);
+        setVehicles(DEFAULT_VEHICLES);
+      } else {
+        // Merge with the hardcoded fleet so a vehicle never disappears just because
+        // it's missing from the DB, while DB entries (edits, newly added vehicles) win.
+        const byPlate = new Map<string, Vehicle>();
+        DEFAULT_VEHICLES.forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
+        (vehiclesData ?? []).forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
+        setVehicles(Array.from(byPlate.values()));
+      }
 
       if (tollsError || invoicesError) {
         console.warn('Supabase error, using localStorage:', { tollsError, invoicesError });
@@ -119,6 +131,14 @@ function App() {
     }
   };
 
+  const saveVehicle = async (vehicleData: Vehicle) => {
+    if (supabase) {
+      const { error } = await supabase.from('vehicles').upsert(vehicleData);
+      if (error) throw error;
+    }
+    await loadData();
+  };
+
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -126,17 +146,18 @@ function App() {
         id: editingVehicle?.id || Date.now().toString(),
         ...newVehicle,
       };
-      if (supabase) {
-        const { error } = await supabase.from('vehicles').upsert(newVehicleData);
-        if (error) throw error;
-      }
-      await loadData();
+      await saveVehicle(newVehicleData);
       setEditingVehicle(null);
       setNewVehicle({ number: '', drivername: '', licenseplate: '' });
     } catch (err) {
       console.error('Error saving vehicle:', err);
       alert('Error al guardar el vehículo');
     }
+  };
+
+  // Used by BulkUpload to register a vehicle inline when an imported plate isn't recognized yet.
+  const handleQuickAddVehicle = async (vehicle: { number: string; drivername: string; licenseplate: string }) => {
+    await saveVehicle({ id: Date.now().toString(), ...vehicle });
   };
 
   const handleEditVehicle = (vehicle: Vehicle) => {
@@ -379,6 +400,7 @@ function App() {
             setNewVehicle={setNewVehicle}
             onAddVehicle={handleAddVehicle}
             onCancelEditVehicle={handleCancelEditVehicle}
+            onQuickAddVehicle={handleQuickAddVehicle}
             editingToll={editingToll}
             newToll={newToll}
             setNewToll={setNewToll}
