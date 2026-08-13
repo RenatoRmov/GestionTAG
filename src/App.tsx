@@ -11,6 +11,19 @@ import Dashboard from './components/Dashboard';
 import RegisterTab from './components/RegisterTab';
 import BillingTab from './components/BillingTab';
 
+// Merge order: hardcoded fleet < locally cached vehicles < freshest Supabase read.
+// A vehicle never disappears just because it's missing from one of the sources.
+const mergeVehicles = (cached: Vehicle[], live: Vehicle[]): Vehicle[] => {
+  const byPlate = new Map<string, Vehicle>();
+  DEFAULT_VEHICLES.forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
+  cached.forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
+  live.forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
+  return Array.from(byPlate.values());
+};
+
+const isNetworkError = (err: unknown): boolean =>
+  /fetch/i.test((err as { message?: string })?.message ?? '');
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -49,8 +62,11 @@ function App() {
     setLoading(true);
     setError(null);
     try {
+      const cachedVehiclesRaw = localStorage.getItem('vehicles_data');
+      const cachedVehicles: Vehicle[] = cachedVehiclesRaw ? JSON.parse(cachedVehiclesRaw) : [];
+
       if (!supabase) {
-        setVehicles(DEFAULT_VEHICLES);
+        setVehicles(mergeVehicles(cachedVehicles, []));
         const savedTolls = localStorage.getItem('tolls_data');
         const savedInvoices = localStorage.getItem('invoices_data');
         if (savedTolls) setTolls(JSON.parse(savedTolls));
@@ -63,15 +79,14 @@ function App() {
       const { data: invoicesData, error: invoicesError } = await supabase.from('invoices').select('*');
 
       if (vehiclesError) {
-        console.warn('Supabase error loading vehicles, using defaults:', vehiclesError);
-        setVehicles(DEFAULT_VEHICLES);
+        console.warn('Supabase error loading vehicles, using cache/defaults:', vehiclesError);
+        setVehicles(mergeVehicles(cachedVehicles, []));
       } else {
-        // Merge with the hardcoded fleet so a vehicle never disappears just because
-        // it's missing from the DB, while DB entries (edits, newly added vehicles) win.
-        const byPlate = new Map<string, Vehicle>();
-        DEFAULT_VEHICLES.forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
-        (vehiclesData ?? []).forEach(v => byPlate.set(v.licenseplate.toUpperCase(), v));
-        setVehicles(Array.from(byPlate.values()));
+        // A vehicle saved locally while offline might not have synced to Supabase yet,
+        // so keep the cache in the merge even when the live read succeeds.
+        const merged = mergeVehicles(cachedVehicles, vehiclesData ?? []);
+        setVehicles(merged);
+        localStorage.setItem('vehicles_data', JSON.stringify(merged));
       }
 
       if (tollsError || invoicesError) {
@@ -92,11 +107,13 @@ function App() {
       }
     } catch (err) {
       console.error('Error loading data:', err);
+      const cachedVehiclesRaw = localStorage.getItem('vehicles_data');
+      const cachedVehicles: Vehicle[] = cachedVehiclesRaw ? JSON.parse(cachedVehiclesRaw) : [];
       const savedTolls = localStorage.getItem('tolls_data');
       const savedInvoices = localStorage.getItem('invoices_data');
       if (savedTolls) setTolls(JSON.parse(savedTolls));
       if (savedInvoices) setInvoices(JSON.parse(savedInvoices));
-      setVehicles(DEFAULT_VEHICLES);
+      setVehicles(mergeVehicles(cachedVehicles, []));
     } finally {
       setLoading(false);
     }
@@ -106,37 +123,65 @@ function App() {
     if (!confirm(`¿Estás seguro que deseas eliminar todos los datos del mes ${selectedMonth}? Esta acción no se puede deshacer.`)) return;
     try {
       if (supabase) {
-        await supabase.from('tolls').delete().eq('month', selectedMonth);
-        await supabase.from('invoices').delete().eq('month', selectedMonth);
+        // Deletes never fully fail the request (Supabase resolves network errors as
+        // {error} rather than throwing), so this must be checked explicitly — otherwise
+        // a failed delete silently reports success and nothing actually gets removed.
+        const { error: tollsErr } = await supabase.from('tolls').delete().eq('month', selectedMonth);
+        if (tollsErr) throw tollsErr;
+        const { error: invoicesErr } = await supabase.from('invoices').delete().eq('month', selectedMonth);
+        if (invoicesErr) throw invoicesErr;
+        await loadData();
+      } else {
+        const updatedTolls = tolls.filter(t => t.month !== selectedMonth);
+        const updatedInvoices = invoices.filter(i => i.month !== selectedMonth);
+        setTolls(updatedTolls);
+        setInvoices(updatedInvoices);
+        localStorage.setItem('tolls_data', JSON.stringify(updatedTolls));
+        localStorage.setItem('invoices_data', JSON.stringify(updatedInvoices));
       }
-      await loadData();
       alert('Datos eliminados exitosamente');
     } catch (err) {
       console.error('Error deleting data:', err);
-      alert('Error al eliminar los datos');
+      alert(isNetworkError(err)
+        ? 'No se pudo eliminar: sin conexión con la base de datos. Nada fue eliminado — verifica tu conexión e intenta nuevamente.'
+        : 'Error al eliminar los datos. Nada fue eliminado — intenta nuevamente.');
     }
   };
 
   const saveData = async () => {
     try {
       if (supabase) {
-        await supabase.from('vehicles').upsert(vehicles, { onConflict: 'id' });
-        await supabase.from('tolls').upsert(tolls, { onConflict: 'id' });
-        await supabase.from('invoices').upsert(invoices, { onConflict: 'id' });
+        const { error: vehiclesErr } = await supabase.from('vehicles').upsert(vehicles, { onConflict: 'id' });
+        if (vehiclesErr) throw vehiclesErr;
+        const { error: tollsErr } = await supabase.from('tolls').upsert(tolls, { onConflict: 'id' });
+        if (tollsErr) throw tollsErr;
+        const { error: invoicesErr } = await supabase.from('invoices').upsert(invoices, { onConflict: 'id' });
+        if (invoicesErr) throw invoicesErr;
       }
       alert('Datos guardados exitosamente');
     } catch (err) {
       console.error('Error saving data:', err);
-      alert('Error al guardar los datos');
+      alert(isNetworkError(err)
+        ? 'No se pudo sincronizar con la base de datos por falta de conexión. Tus cambios siguen en pantalla, pero no se guardaron en la nube — intenta nuevamente cuando tengas conexión.'
+        : 'Error al guardar los datos. Intenta nuevamente.');
     }
   };
 
+  // Mirrors the toll/invoice pattern: reflect locally + cache immediately so vehicle
+  // management works even when Supabase is unreachable, and sync to the DB opportunistically.
   const saveVehicle = async (vehicleData: Vehicle) => {
+    setVehicles(prev => {
+      const updated = prev.some(v => v.id === vehicleData.id)
+        ? prev.map(v => v.id === vehicleData.id ? vehicleData : v)
+        : [...prev, vehicleData];
+      localStorage.setItem('vehicles_data', JSON.stringify(updated));
+      return updated;
+    });
+
     if (supabase) {
       const { error } = await supabase.from('vehicles').upsert(vehicleData);
-      if (error) throw error;
+      if (error) console.warn('Supabase error saving vehicle, kept locally only:', error);
     }
-    await loadData();
   };
 
   const handleAddVehicle = async (e: React.FormEvent) => {
@@ -144,7 +189,9 @@ function App() {
     try {
       const newVehicleData: Vehicle = {
         id: editingVehicle?.id || Date.now().toString(),
-        ...newVehicle,
+        number: newVehicle.number.trim(),
+        drivername: newVehicle.drivername.trim(),
+        licenseplate: newVehicle.licenseplate.trim().toUpperCase(),
       };
       await saveVehicle(newVehicleData);
       setEditingVehicle(null);
@@ -157,7 +204,12 @@ function App() {
 
   // Used by BulkUpload to register a vehicle inline when an imported plate isn't recognized yet.
   const handleQuickAddVehicle = async (vehicle: { number: string; drivername: string; licenseplate: string }) => {
-    await saveVehicle({ id: Date.now().toString(), ...vehicle });
+    await saveVehicle({
+      id: Date.now().toString(),
+      number: vehicle.number.trim(),
+      drivername: vehicle.drivername.trim(),
+      licenseplate: vehicle.licenseplate.trim().toUpperCase(),
+    });
   };
 
   const handleEditVehicle = (vehicle: Vehicle) => {
