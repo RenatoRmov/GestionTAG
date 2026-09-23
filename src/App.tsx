@@ -267,6 +267,29 @@ function App() {
     setNewToll({ highway: HIGHWAYS[0], licenseplate: '', amount: '', month: selectedMonth });
   };
 
+  const handleDeleteToll = async (id: string) => {
+    const toll = tolls.find(t => t.id === id);
+    if (!toll) return;
+    if (!confirm(`¿Eliminar el gasto de ${toll.licenseplate} en ${toll.highway} (${toll.month}) por $${toll.amount.toLocaleString()}? Esta acción no se puede deshacer.`)) return;
+    try {
+      if (supabase) {
+        // Same reasoning as handleDeleteMonthData: don't remove it locally unless the
+        // server confirms the delete, otherwise it can silently reappear on next sync.
+        const { error } = await supabase.from('tolls').delete().eq('id', id);
+        if (error) throw error;
+      }
+      const updatedTolls = tolls.filter(t => t.id !== id);
+      setTolls(updatedTolls);
+      localStorage.setItem('tolls_data', JSON.stringify(updatedTolls));
+      if (editingToll?.id === id) handleCancelEditToll();
+    } catch (err) {
+      console.error('Error deleting toll:', err);
+      alert(isNetworkError(err)
+        ? 'No se pudo eliminar: sin conexión con la base de datos. Verifica tu conexión e intenta nuevamente.'
+        : 'Error al eliminar el gasto. Intenta nuevamente.');
+    }
+  };
+
   const handleBulkSave = async (newTolls: Omit<Toll, 'id'>[]) => {
     const baseTime = Date.now();
     const tollsToSave: Toll[] = newTolls.map((t, i) => ({
@@ -459,6 +482,7 @@ function App() {
             onAddToll={handleAddToll}
             onEditToll={handleEditToll}
             onCancelEditToll={handleCancelEditToll}
+            onDeleteToll={handleDeleteToll}
             onBulkSave={handleBulkSave}
           />
         )}

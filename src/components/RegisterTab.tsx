@@ -1,5 +1,5 @@
 import React from 'react';
-import { Car, FileSpreadsheet, PencilLine, Plus, X } from 'lucide-react';
+import { Car, FileSpreadsheet, PencilLine, Plus, Trash2, X } from 'lucide-react';
 import { Vehicle, Toll, HIGHWAYS, MONTHS } from '../types';
 import { sortVehicles } from '../lib/utils';
 import BulkUpload from './BulkUpload';
@@ -24,6 +24,7 @@ interface RegisterTabProps {
   onAddToll: (e: React.FormEvent) => void;
   onEditToll: (toll: Toll) => void;
   onCancelEditToll: () => void;
+  onDeleteToll: (id: string) => void;
 
   // Bulk upload
   onBulkSave: (tolls: Omit<Toll, 'id'>[]) => void;
@@ -32,7 +33,7 @@ interface RegisterTabProps {
 const RegisterTab: React.FC<RegisterTabProps> = ({
   vehicles, tolls, selectedMonth,
   editingVehicle, newVehicle, setNewVehicle, onAddVehicle, onCancelEditVehicle, onQuickAddVehicle,
-  editingToll, newToll, setNewToll, onAddToll, onEditToll, onCancelEditToll,
+  editingToll, newToll, setNewToll, onAddToll, onEditToll, onCancelEditToll, onDeleteToll,
   onBulkSave,
 }) => {
   return (
@@ -203,12 +204,22 @@ const RegisterTab: React.FC<RegisterTabProps> = ({
                         <td className="px-6 py-4 whitespace-nowrap">{toll.licenseplate}</td>
                         <td className="px-6 py-4 whitespace-nowrap">${toll.amount.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => onEditToll(toll)}
-                            className="text-blue-600 hover:text-blue-900"
-                          >
-                            <PencilLine className="w-5 h-5" />
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => onEditToll(toll)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Editar"
+                            >
+                              <PencilLine className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => onDeleteToll(toll.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
