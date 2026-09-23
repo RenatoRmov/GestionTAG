@@ -178,63 +178,64 @@ const RegisterTab: React.FC<RegisterTabProps> = ({
             )}
           </div>
         </form>
-
-        {/* Lista de gastos TAG */}
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-4">Gastos Registrados</h3>
-          {tolls.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Autopista</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mes</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patente</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {[...tolls]
-                    .sort((a, b) => parseInt(b.id) - parseInt(a.id))
-                    .map(toll => (
-                      <tr key={toll.id}>
-                        <td className="px-6 py-4 whitespace-nowrap">{toll.highway}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{toll.month}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">{toll.licenseplate}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">${toll.amount.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => onEditToll(toll)}
-                              className="text-blue-600 hover:text-blue-900"
-                              title="Editar"
-                            >
-                              <PencilLine className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => onDeleteToll(toll.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <FileSpreadsheet className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-              <p>No hay gastos registrados</p>
-            </div>
-          )}
-        </div>
       </div>
     </div>
+
+    {/* Lista de gastos TAG — a todo el ancho para que quepan las columnas sin scroll lateral */}
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4">Gastos Registrados ({tolls.length})</h3>
+      {tolls.length > 0 ? (
+        <div className="overflow-x-auto overflow-y-auto max-h-[70vh] border border-gray-200 rounded-md">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Autopista</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mes</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patente</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {[...tolls]
+                .sort((a, b) => parseInt(b.id) - parseInt(a.id))
+                .map(toll => (
+                  <tr key={toll.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{toll.highway}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm">{toll.month}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-mono">{toll.licenseplate}</td>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right font-medium">${toll.amount.toLocaleString()}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => onEditToll(toll)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="Editar"
+                        >
+                          <PencilLine className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onDeleteToll(toll.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          <FileSpreadsheet className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+          <p>No hay gastos registrados</p>
+        </div>
+      )}
+    </div>
+
     <BulkUpload vehicles={vehicles} existingTolls={tolls} onSave={onBulkSave} onAddVehicle={onQuickAddVehicle} />
     </div>
   );
